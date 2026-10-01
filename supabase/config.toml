@@ -1,0 +1,57 @@
+project_id = "fdrqmgvsmkhoiwwbdqco"
+
+[functions]
+  [functions.auth-email-hook]
+    verify_jwt = false
+  [functions.google-calendar-connect-callback]
+    verify_jwt = false
+  [functions.task-calendar-sync]
+    verify_jwt = true
+  [functions.task-notification-send]
+    verify_jwt = true
+  [functions.twilio-message-status]
+    verify_jwt = false
+  [functions.preview-transactional-email]
+    verify_jwt = true
+  [functions.ai-quality-alert-send]
+    verify_jwt = true
+  [functions.ai-query]
+    verify_jwt = true
+  [functions.bank-import-alert-send]
+    verify_jwt = true
+  [functions.estimate-photo-analyze]
+    verify_jwt = true
+  [functions.feedback-alert-send]
+    verify_jwt = true
+  [functions.fetch-sheet-proxy]
+    verify_jwt = true
+  [functions.google-calendar-connect-start]
+    verify_jwt = true
+  [functions.google-calendar-disconnect]
+    verify_jwt = true
+  [functions.google-calendar-list]
+    verify_jwt = true
+  [functions.import-commit]
+    verify_jwt = true
+  [functions.import-stage]
+    verify_jwt = true
+  [functions.import-trifecta-os]
+    verify_jwt = true
+  [functions.import-v10-stage]
+    verify_jwt = true
+  [functions.invite-user]
+    verify_jwt = true
+  [functions.phone-verification-check]
+    verify_jwt = true
+  [functions.phone-verification-start]
+    verify_jwt = true
+  [functions.process-receipt]
+    verify_jwt = true
+  [functions.task-reminder-dispatch]
+    verify_jwt = true
+  [functions.voice-to-expense]
+    verify_jwt = true
+  [functions.daily-reminder-send]
+    verify_jwt = false
+  [functions.project-financial-review]
+    verify_jwt = true

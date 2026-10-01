@@ -1,0 +1,182 @@
+name: V10 Financial Import CI
+
+on:
+  push:
+    branches:
+      - feat/v10-financial-import
+      - feat/task-calendar-sms-multitenant-mobile-expenses
+  pull_request:
+    branches:
+      - main
+      - bolt-sync
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    env:
+      VITE_SUPABASE_PROJECT_ID: ci-placeholder
+      VITE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
+      VITE_SUPABASE_URL: https://example.supabase.co
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch lint base references
+        shell: pwsh
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git fetch origin bolt-sync:refs/remotes/origin/bolt-sync
+
+      - name: Lint changed files
+        run: npm run lint:changed
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit and integration tests
+        if: github.base_ref != 'bolt-sync'
+        run: npm test -- --run
+
+      - name: Bolt expense-review regression tests
+        if: github.base_ref == 'bolt-sync'
+        run: npx vitest run src/lib/__tests__/reviewFilters.test.ts
+
+      - name: Build
+        run: npm run build
+
+      - name: AI Scan quality gate
+        if: github.base_ref != 'bolt-sync'
+        run: npm run estimate-ai:gate
+
+      - name: V10 self-test
+        if: github.base_ref != 'bolt-sync'
+        run: npm run v10:self-test
+
+      - name: V10 synthetic dry run
+        if: github.base_ref != 'bolt-sync'
+        run: npm run v10:dry-run
+
+  supabase-local:
+    if: github.base_ref != 'bolt-sync'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.84.2
+          github-token: ${{ github.token }}
+
+      - name: Start local Supabase
+        run: supabase start
+
+      - name: Reset database twice
+        run: |
+          reset_database() {
+            local reset_number="$1"
+            local max_attempts=3
+            local attempt output
+
+            for attempt in $(seq 1 "$max_attempts"); do
+              echo "DB RESET ${reset_number} - attempt ${attempt}/${max_attempts}"
+              if output="$(supabase db reset 2>&1)"; then
+                printf '%s\n' "$output"
+                echo "DB RESET ${reset_number} - PASS"
+                return 0
+              else
+                local exit_code=$?
+              fi
+
+              printf '%s\n' "$output"
+
+              if ! printf '%s\n' "$output" | grep -Eiq 'failed to execute http request.*127\.0\.0\.1:[0-9]+/storage/v1/bucket' ||
+                 ! printf '%s\n' "$output" | grep -Eiq 'context deadline exceeded|Client\.Timeout exceeded|connection refused|connection reset by peer|unexpected EOF'; then
+                echo "DB RESET ${reset_number} - FAIL: non-transient error (exit ${exit_code}); not retrying"
+                return "$exit_code"
+              fi
+
+              if [ "$attempt" -eq "$max_attempts" ]; then
+                echo "DB RESET ${reset_number} - FAIL: transient Storage health check persisted after ${max_attempts} attempts"
+                return "$exit_code"
+              fi
+
+              echo "DB RESET ${reset_number} - transient local Storage health failure; retrying after 8 seconds"
+              sleep 8
+              if supabase status >/dev/null 2>&1; then
+                echo "Local Supabase status check: stack responds"
+              else
+                echo "Local Supabase status check: stack unavailable; restarting local stack"
+                supabase stop --no-backup
+                supabase start
+              fi
+            done
+          }
+
+          reset_database 1
+          reset_database 2
+
+      - name: Lint local database
+        run: supabase db lint --local --level warning
+
+      - name: Validate tenant RLS
+        run: |
+          docker cp scripts/task-beta-rls-local.sql supabase_db_jejuyjesfhwkzfgfuozb:/tmp/task-beta-rls-local.sql
+          docker exec supabase_db_jejuyjesfhwkzfgfuozb psql -v ON_ERROR_STOP=1 -U postgres -d postgres -f /tmp/task-beta-rls-local.sql
+
+      - name: Validate business unit tenant isolation
+        run: |
+          docker cp scripts/business-units-rls-local.sql supabase_db_jejuyjesfhwkzfgfuozb:/tmp/business-units-rls-local.sql
+          docker exec supabase_db_jejuyjesfhwkzfgfuozb psql -v ON_ERROR_STOP=1 -U postgres -d postgres -f /tmp/business-units-rls-local.sql
+
+      - name: Validate estimate photo foundation
+        run: |
+          docker cp scripts/estimate-photo-foundation-local.sql supabase_db_jejuyjesfhwkzfgfuozb:/tmp/estimate-photo-foundation-local.sql
+          docker exec supabase_db_jejuyjesfhwkzfgfuozb psql -v ON_ERROR_STOP=1 -U postgres -d postgres -f /tmp/estimate-photo-foundation-local.sql
+
+      - name: Validate secure Google OAuth state RPC
+        run: node scripts/google-oauth-rpc-local.mjs
+
+      - name: Run local Edge and V10 E2E
+        run: node scripts/v10-local-supabase-e2e.mjs
+
+      - name: Export local Supabase test environment
+        run: |
+          supabase status -o env \
+            --override-name api.url=SUPABASE_URL \
+            --override-name auth.anon_key=VITE_SUPABASE_PUBLISHABLE_KEY \
+            --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY >> "$GITHUB_ENV"
+          echo "VITE_SUPABASE_URL=http://127.0.0.1:54321" >> "$GITHUB_ENV"
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Authenticated, multitenant and offline browser E2E
+        run: npm run e2e:authenticated

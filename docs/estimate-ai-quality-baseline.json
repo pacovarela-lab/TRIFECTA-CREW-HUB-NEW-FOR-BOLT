@@ -1,0 +1,10 @@
+{
+  "total_accuracy_pct": 100,
+  "monetary_accuracy_pct": 78.4,
+  "item_completeness_pct": 97.6,
+  "text_accuracy_pct": 94.2,
+  "overall_extraction_accuracy_pct": 89.1,
+  "hallucinated_items": 2,
+  "missing_items": 1,
+  "median_ai_ms": 6551
+}

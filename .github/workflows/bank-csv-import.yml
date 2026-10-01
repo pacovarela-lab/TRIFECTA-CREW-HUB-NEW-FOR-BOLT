@@ -1,0 +1,89 @@
+name: Bank CSV Import
+
+# Importa automáticamente los CSV de conciliación que se suban a imports/bank/
+# y marca como "por revisar" los movimientos que necesitan atención.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "imports/bank/*.csv"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bank-csv-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile || bun install
+
+      - name: Importar CSV de conciliación
+        id: import
+        env:
+          SUPABASE_URL: ${{ secrets.BANK_IMPORT_SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.BANK_IMPORT_SUPABASE_ANON_KEY }}
+          IMPORT_USER_EMAIL: ${{ secrets.BANK_IMPORT_USER_EMAIL }}
+          IMPORT_USER_PASSWORD: ${{ secrets.BANK_IMPORT_USER_PASSWORD }}
+        run: bun scripts/import-bank-csv.ts
+
+      - name: Guardar reporte
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: bank-import-summary
+          path: |
+            bank-import-summary.txt
+            bank-import-summary.json
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Archivar archivos importados
+        if: success() && steps.import.outputs.status == 'ok'
+        run: |
+          shopt -s nullglob
+          files=(imports/bank/*.csv)
+          [ ${#files[@]} -eq 0 ] && exit 0
+          mkdir -p imports/bank/processed
+          for f in "${files[@]}"; do
+            git mv "$f" "imports/bank/processed/$(date -u +%Y%m%d-%H%M%S)-$(basename "$f")"
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: archivar CSV de conciliación importados [skip ci]"
+          git push
+
+      - name: Avisar por correo
+        if: always()
+        env:
+          ALERT_URL: ${{ secrets.BANK_IMPORT_ALERT_URL }}
+          ALERT_TOKEN: ${{ secrets.AI_QUALITY_ALERT_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$ALERT_URL" ] || [ -z "$ALERT_TOKEN" ]; then
+            echo "Aviso por correo no configurado; se omite."
+            exit 0
+          fi
+          REPORT=$(tail -c 4000 bank-import-summary.txt 2>/dev/null || echo "La importación falló antes de generar el reporte.")
+          SUMMARY=$(head -n 1 bank-import-summary.txt 2>/dev/null || echo "La importación de conciliación falló.")
+          jq -n --arg run_url "$RUN_URL" --arg summary "$SUMMARY" --arg report "$REPORT" --arg run_id "${{ github.run_id }}" \
+            '{run_url:$run_url, summary:$summary, report:$report, run_id:$run_id}' > payload.json
+          curl -sS -o /dev/null -w "aviso por correo: HTTP %{http_code}\n" \
+            -X POST "$ALERT_URL" \
+            -H "Content-Type: application/json" \
+            -H "x-alert-token: $ALERT_TOKEN" \
+            --data @payload.json

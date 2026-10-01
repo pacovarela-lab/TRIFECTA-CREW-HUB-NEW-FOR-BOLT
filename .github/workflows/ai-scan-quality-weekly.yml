@@ -1,0 +1,83 @@
+name: AI Scan Quality Weekly
+
+# Corre la baseline de calidad del escaneo AI cada semana y avisa si la
+# exactitud del total baja o aparecen más partidas inventadas.
+
+on:
+  schedule:
+    - cron: "0 13 * * 1" # lunes 13:00 UTC (07:00 CDMX)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    env:
+      VITE_SUPABASE_PROJECT_ID: ci-placeholder
+      VITE_SUPABASE_PUBLISHABLE_KEY: ci-placeholder
+      VITE_SUPABASE_URL: https://example.supabase.co
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: AI Scan quality gate
+        id: gate
+        run: |
+          set -o pipefail
+          npm run estimate-ai:gate 2>&1 | tee ai-scan-quality-report.txt
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ai-scan-quality-report
+          path: ai-scan-quality-report.txt
+          retention-days: 90
+
+      - name: Abrir aviso si la exactitud cayó
+        if: failure() && steps.gate.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          BODY=$(printf 'La revisión semanal de calidad del escaneo AI falló.\n\nCorrida: %s\n\n```\n%s\n```\n' \
+            "$RUN_URL" "$(tail -c 4000 ai-scan-quality-report.txt)")
+          EXISTING=$(gh issue list --state open --label ai-scan-quality --limit 1 --json number --jq '.[0].number')
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh label create ai-scan-quality --color B60205 --description "Baseline de calidad del escaneo AI" 2>/dev/null || true
+            gh issue create --title "AI Scan quality: la exactitud bajó" --label ai-scan-quality --body "$BODY"
+          fi
+
+      - name: Avisar por correo si la exactitud cayó
+        if: failure() && steps.gate.outcome == 'failure'
+        env:
+          ALERT_URL: ${{ secrets.AI_QUALITY_ALERT_URL }}
+          ALERT_TOKEN: ${{ secrets.AI_QUALITY_ALERT_TOKEN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          if [ -z "$ALERT_URL" ] || [ -z "$ALERT_TOKEN" ]; then
+            echo "Aviso por correo omitido: faltan AI_QUALITY_ALERT_URL / AI_QUALITY_ALERT_TOKEN."
+            exit 0
+          fi
+          REPORT=$(tail -c 3500 ai-scan-quality-report.txt)
+          PAYLOAD=$(REPORT="$REPORT" RUN_URL="$RUN_URL" RUN_ID="$RUN_ID" python3 -c 'import json,os; print(json.dumps({"run_url":os.environ["RUN_URL"],"run_id":os.environ["RUN_ID"],"summary":"El control semanal de calidad del escaneo AI falló contra la referencia guardada.","report":os.environ["REPORT"]}))')
+          curl -sS -f -X POST "$ALERT_URL" \
+            -H "Content-Type: application/json" \
+            -H "x-alert-token: $ALERT_TOKEN" \
+            -d "$PAYLOAD"

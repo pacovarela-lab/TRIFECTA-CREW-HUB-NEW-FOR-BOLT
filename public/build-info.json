@@ -1,0 +1,6 @@
+{
+  "release": "expense-review-server-authoritative-v6",
+  "reviewFlow": "supabase-rpc-expense-review-queue",
+  "sourceBranch": "bolt-sync",
+  "functionalCommit": "0c8d901f59743e647dc22dff8ceb147cbd128198"
+}

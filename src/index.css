@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Trifecta OS — Minimal con acentos
+   Zinc neutrals, emerald success, amber pending, soft elevation, mono money */
+@layer base {
+  :root {
+    --background: 240 5% 98%;          /* zinc-50 */
+    --foreground: 240 6% 10%;          /* zinc-900 */
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 6% 10%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 6% 10%;
+
+    /* primary = near-black for nav/chrome/CTA */
+    --primary: 240 6% 10%;             /* zinc-900 */
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 240 5% 96%;           /* zinc-100 */
+    --secondary-foreground: 240 6% 10%;
+
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;    /* zinc-500 */
+
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 6% 10%;
+
+    /* status — refined, calibrated to white */
+    --success: 160 84% 39%;            /* emerald-600 */
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;             /* amber-500 */
+    --warning-foreground: 26 70% 18%;  /* amber-950 readable on light amber */
+    --destructive: 0 72% 51%;          /* red-600 */
+    --destructive-foreground: 0 0% 100%;
+    --info: 217 91% 60%;               /* blue-500 */
+    --info-foreground: 0 0% 100%;
+
+    --border: 240 6% 90%;              /* zinc-200 */
+    --input: 240 6% 90%;
+    --ring: 240 6% 10%;
+
+    --radius: 0.6875rem;               /* 11px — clean, not overly rounded */
+
+    /* Sidebar / header / bottom nav — light surfaces, not dark chrome */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 240 6% 10%;
+    --sidebar-primary: 160 84% 39%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 96%;
+    --sidebar-accent-foreground: 240 6% 10%;
+    --sidebar-border: 240 6% 90%;
+    --sidebar-ring: 160 84% 39%;
+  }
+
+  .dark {
+    --background: 240 6% 8%;
+    --foreground: 240 5% 96%;
+    --card: 240 5% 11%;
+    --card-foreground: 240 5% 96%;
+    --popover: 240 5% 11%;
+    --popover-foreground: 240 5% 96%;
+    --primary: 0 0% 100%;
+    --primary-foreground: 240 6% 10%;
+    --secondary: 240 4% 16%;
+    --secondary-foreground: 240 5% 96%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 240 4% 18%;
+    --accent-foreground: 240 5% 96%;
+    --border: 240 4% 18%;
+    --input: 240 4% 18%;
+    --ring: 240 5% 90%;
+    --warning-foreground: 38 92% 92%;
+
+    --sidebar-background: 240 6% 8%;
+    --sidebar-foreground: 240 5% 96%;
+    --sidebar-accent: 240 4% 16%;
+    --sidebar-accent-foreground: 240 5% 96%;
+    --sidebar-border: 240 4% 18%;
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  html, body, #root { @apply h-full; }
+  body {
+    @apply bg-background text-foreground antialiased font-sans;
+    -webkit-tap-highlight-color: transparent;
+    font-feature-settings: "ss01", "cv11";
+  }
+}
+
+@layer utilities {
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-top { padding-top: env(safe-area-inset-top); }
+
+  /* Money figures: monospace with tabular numerals for vertical alignment */
+  .money {
+    font-family: theme('fontFamily.mono');
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+  }
+
+  /* Tiny uppercase eyebrow label */
+  .eyebrow {
+    @apply text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground;
+  }
+
+  /* Status pill base — pair with tone classes */
+  .pill {
+    @apply inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-tight;
+  }
+  .pill-pending  { @apply bg-transparent text-warning-foreground border border-warning/20; }
+  .pill-success  { @apply bg-transparent text-[hsl(var(--success))] border border-success/20; }
+  .pill-info     { @apply bg-transparent text-[hsl(var(--info))] border border-info/20; }
+  .pill-muted    { @apply bg-transparent text-muted-foreground border border-border; }
+  .pill-danger   { @apply bg-transparent text-destructive border border-destructive/20; }
+
+  /* Status edge bar for list rows */
+  .edge { @apply absolute left-0 top-0 bottom-0 w-1 rounded-r; }
+  .edge-pending { @apply bg-warning; }
+  .edge-success { @apply bg-success; }
+  .edge-info    { @apply bg-info; }
+  .edge-muted   { @apply bg-border; }
+}
